@@ -54,3 +54,18 @@ The results section, reachable by swiping down or clicking the button when shown
 - Commit readable, organized code in logical chunks
 - README explains how to run the app, the architecture in 1-2 paragraphs, and the trade-offs made
 - Input validation on the backend (we will handle a lot of this with Pydantic/FastAPI)
+
+## Plan for Claude
+
+- As recommended, I will scaffold the project and implement features vertically with minimal data entities and mocks to begin with
+- I will transition toward full API integration, then populating the dataset with the minimum 100 pets once all of the Core features (+ user authentication) have been manually validated as complete and functional
+- Usage of AI will be documented in the README
+
+## AI Usage Notes
+
+Running log of how AI (Claude Code) is being used on this project. Kept brief and updated as work progresses.
+
+- **Design phase (pre-implementation):** All design decisions in the sections above were authored by me without AI assistance. AI was first engaged after this spec was finalized.
+- **Clarification pass:** Claude reviewed the spec and surfaced ambiguities (auth vs. session-id relationship, skip-vs-no semantics in the aggregation, password rules, gesture-library choice, pet image API) before any code was written. Resolutions are folded back into this document.
+- **Scaffolding & vertical slices:** Used to bootstrap the React frontend, FastAPI backend, SQLite schema, and Docker setup. Each vertical slice (auth, swipe deck, voting, aggregation, seeding) is manually validated by me on the 390x844 viewport before moving on.
+- **Code review:** I review AI-generated diffs in logical commit chunks rather than accepting wholesale; my React/FastAPI familiarity (noted above) is what makes this feasible.

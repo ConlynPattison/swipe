@@ -1,0 +1,30 @@
+services:
+  backend:
+    build: ./backend
+    container_name: swipe-backend
+    environment:
+      - DATABASE_URL=sqlite:////data/swipe.db
+      - JWT_SECRET=dev-secret-change-me
+      - JWT_ALGORITHM=HS256
+      - JWT_EXPIRE_MINUTES=10080
+    volumes:
+      - backend_data:/data
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  frontend:
+    build: ./frontend
+    container_name: swipe-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  backend_data:
