@@ -59,6 +59,7 @@ The results section, reachable by swiping down or clicking the button when shown
 
 - As recommended, I will scaffold the project and implement features vertically with minimal data entities and mocks to begin with
 - I will transition toward full API integration, then populating the dataset with the minimum 100 pets once all of the Core features (+ user authentication) have been manually validated as complete and functional
+- For the swipe-deck/voting slice specifically, the mock data (3 pets) is persisted as real rows in the SQLite DB rather than returned from hardcoded endpoint responses. This way the deck and voting code paths are exercised against the same Pet model that the eventual Dog/Cat API seed will populate -- only the seeding source changes later.
 - Usage of AI will be documented in the README
 
 ## AI Usage Notes
@@ -69,3 +70,4 @@ Running log of how AI (Claude Code) is being used on this project. Kept brief an
 - **Clarification pass:** Claude reviewed the spec and surfaced ambiguities (auth vs. session-id relationship, skip-vs-no semantics in the aggregation, password rules, gesture-library choice, pet image API) before any code was written. Resolutions are folded back into this document.
 - **Scaffolding & vertical slices:** Used to bootstrap the React frontend, FastAPI backend, SQLite schema, and Docker setup. Each vertical slice (auth, swipe deck, voting, aggregation, seeding) is manually validated by me on the 390x844 viewport before moving on.
 - **Code review:** I review AI-generated diffs in logical commit chunks rather than accepting wholesale; my React/FastAPI familiarity (noted above) is what makes this feasible.
+- **Swipe-deck slice — mock data lives in the DB:** I asked Claude to back the 3 swipe-deck mock pets with real DB rows (via a small idempotent seeder run at startup if the pets table is empty) rather than hardcoding them into the GET /pets response. The reason was to keep the read/write code paths under test against the real Pet model so that swapping the seeding source for the Dog/Cat API later is a one-spot change.

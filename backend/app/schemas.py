@@ -1,7 +1,10 @@
 import re
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+VoteChoice = Literal["yes", "no"]
 
 USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
@@ -47,3 +50,24 @@ class UserOut(BaseModel):
     username: str
     email: EmailStr
     created_at: datetime
+
+
+class PetResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    label: str
+    image_url: str
+    your_vote: VoteChoice | None = None
+
+
+class VoteRequest(BaseModel):
+    choice: VoteChoice
+
+
+class VoteResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    pet_id: int
+    choice: VoteChoice
+    updated_at: datetime
