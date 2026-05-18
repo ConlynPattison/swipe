@@ -1,13 +1,63 @@
 import { motion, useAnimation, type PanInfo } from "framer-motion";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+
+import { useAuth } from "../auth/useAuth";
+import { api, ApiError, type ResultRow, type SortOption } from "../lib/api";
 
 const COMMIT_OFFSET = 110;
 const COMMIT_VELOCITY = 600;
 const EXIT_Y = 900;
+const DEBOUNCE_MS = 250;
+
+type FetchState =
+  | { kind: "loading" }
+  | { kind: "error"; message: string }
+  | { kind: "ready"; results: ResultRow[] };
 
 export function AggregationPage() {
+  const { token } = useAuth();
   const navigate = useNavigate();
   const controls = useAnimation();
+  const [sort, setSort] = useState<SortOption>("most_loved");
+  const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [state, setState] = useState<FetchState>({ kind: "loading" });
+  const [atTop, setAtTop] = useState(true);
+
+  useEffect(() => {
+    const update = () => setAtTop(window.scrollY <= 0);
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+    return () => window.removeEventListener("scroll", update);
+  }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query.trim()), DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  useEffect(() => {
+    if (token === null) return;
+    let cancelled = false;
+    const params = new URLSearchParams({ sort });
+    if (debouncedQuery) params.set("q", debouncedQuery);
+    setState({ kind: "loading" });
+    api
+      .get<ResultRow[]>(`/results?${params.toString()}`, token)
+      .then((rows) => {
+        if (cancelled) return;
+        setState({ kind: "ready", results: rows });
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        const msg = err instanceof ApiError ? err.detail : "Couldn't load results.";
+        setState({ kind: "error", message: msg });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, sort, debouncedQuery]);
 
   async function handleDragEnd(_: PointerEvent, info: PanInfo) {
     const { offset, velocity } = info;
@@ -24,27 +74,126 @@ export function AggregationPage() {
 
   return (
     <motion.main
-      className="min-h-screen flex flex-col px-6 pt-16 pb-8"
-      drag="y"
+      className="min-h-screen flex flex-col px-5 pt-10 pb-8"
+      drag={atTop ? "y" : false}
       dragConstraints={{ top: -200, bottom: 0 }}
       dragElastic={0.6}
       dragMomentum={false}
       animate={controls}
       onDragEnd={handleDragEnd}
     >
-      <header className="mb-8">
+      <header className="mb-4">
         <Link to="/" className="text-sm text-slate-300 underline underline-offset-4">
           ← Back to swiping
         </Link>
+        <h1 className="text-2xl font-bold mt-3">Results</h1>
       </header>
-      <div className="flex-1 flex flex-col items-center justify-center text-center">
-        <h1 className="text-3xl font-bold mb-2">Results</h1>
-        <p className="text-slate-400">Aggregation lives here.</p>
-        <p className="text-slate-600 text-xs mt-6">
-          Coming next: sortable, searchable list of every pet and how everyone voted.
+
+      <Controls sort={sort} setSort={setSort} query={query} setQuery={setQuery} />
+
+      <Body state={state} />
+
+      <p className="text-slate-600 text-xs text-center pt-6">
+        ↑ Swipe up to return to the deck
+      </p>
+    </motion.main>
+  );
+}
+
+function Controls({
+  sort,
+  setSort,
+  query,
+  setQuery,
+}: {
+  sort: SortOption;
+  setSort: (s: SortOption) => void;
+  query: string;
+  setQuery: (q: string) => void;
+}) {
+  const options: { value: SortOption; label: string }[] = [
+    { value: "most_loved", label: "Most loved" },
+    { value: "most_divisive", label: "Most divisive" },
+    { value: "most_skipped", label: "Most skipped" },
+  ];
+  return (
+    <div className="flex flex-col gap-3 mb-4">
+      <input
+        type="search"
+        placeholder="Search pets…"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2.5 text-sm focus:outline-none focus:border-slate-600"
+      />
+      <div className="grid grid-cols-3 gap-2">
+        {options.map((opt) => (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => setSort(opt.value)}
+            className={`rounded-xl py-2 text-xs font-medium border transition-colors ${
+              sort === opt.value
+                ? "bg-slate-100 text-slate-950 border-slate-100"
+                : "bg-slate-900 border-slate-800 text-slate-300"
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Body({ state }: { state: FetchState }) {
+  if (state.kind === "loading") {
+    return <p className="text-slate-500 mt-6">Loading results…</p>;
+  }
+  if (state.kind === "error") {
+    return <p className="text-red-400 mt-6">{state.message}</p>;
+  }
+  if (state.results.length === 0) {
+    return <p className="text-slate-500 mt-6 text-center">No pets match.</p>;
+  }
+  return (
+    <ul className="flex-1 divide-y divide-slate-800">
+      {state.results.map((row) => (
+        <ResultListItem key={row.id} row={row} />
+      ))}
+    </ul>
+  );
+}
+
+function ResultListItem({ row }: { row: ResultRow }) {
+  const hasVotes = row.total_votes > 0;
+  const pct = hasVotes ? Math.round(row.yes_percent) : 0;
+  return (
+    <li className="flex gap-3 py-3 items-center">
+      <img
+        src={row.image_url}
+        alt={row.label}
+        loading="lazy"
+        className="w-14 h-14 rounded-lg object-cover bg-slate-800 shrink-0"
+      />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-baseline justify-between gap-2">
+          <p className="font-semibold truncate">{row.label}</p>
+          <p className="text-sm text-slate-300 tabular-nums shrink-0">
+            {hasVotes ? `${pct}%` : "no votes"}
+          </p>
+        </div>
+        <div className="mt-1.5 h-2 bg-slate-800 rounded-full overflow-hidden flex">
+          {hasVotes && (
+            <>
+              <div className="h-full bg-yes" style={{ width: `${pct}%` }} />
+              <div className="h-full bg-no" style={{ width: `${100 - pct}%` }} />
+            </>
+          )}
+        </div>
+        <p className="text-xs text-slate-500 mt-1 tabular-nums">
+          {row.yes_count} yes · {row.no_count} no · {row.total_votes} total
         </p>
       </div>
-      <p className="text-slate-600 text-xs text-center pt-4">↑ Swipe up to return to the deck</p>
-    </motion.main>
+    </li>
   );
 }

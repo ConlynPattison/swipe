@@ -99,3 +99,15 @@ export type VoteResponse = {
   choice: VoteChoice;
   updated_at: string;
 };
+
+export type SortOption = "most_loved" | "most_skipped" | "most_divisive";
+
+export type ResultRow = {
+  id: number;
+  label: string;
+  image_url: string;
+  yes_count: number;
+  no_count: number;
+  total_votes: number;
+  yes_percent: number;
+};
