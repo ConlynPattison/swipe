@@ -1,24 +1,29 @@
-import { useEffect, useState } from "react";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
-type HealthResponse = { status: string };
+import { AuthProvider } from "./auth/AuthContext";
+import { LoginPage } from "./auth/LoginPage";
+import { RequireAuth } from "./auth/RequireAuth";
+import { SignupPage } from "./auth/SignupPage";
+import { DeckPage } from "./pages/DeckPage";
 
 export default function App() {
-  const [apiStatus, setApiStatus] = useState<string>("checking…");
-
-  useEffect(() => {
-    fetch("/api/health")
-      .then((res) => (res.ok ? (res.json() as Promise<HealthResponse>) : Promise.reject(res.status)))
-      .then((data) => setApiStatus(data.status))
-      .catch((err) => setApiStatus(`error: ${err}`));
-  }, []);
-
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center px-6 text-center">
-      <h1 className="text-4xl font-bold mb-2">Swipe</h1>
-      <p className="text-slate-400 mb-8">Swipe-to-vote on adoptable pets.</p>
-      <div className="rounded-xl bg-slate-900 px-4 py-3 text-sm">
-        backend <span className="font-mono">/api/health</span>: <span className="font-mono">{apiStatus}</span>
-      </div>
-    </main>
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
+          <Route
+            path="/"
+            element={
+              <RequireAuth>
+                <DeckPage />
+              </RequireAuth>
+            }
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   );
 }
