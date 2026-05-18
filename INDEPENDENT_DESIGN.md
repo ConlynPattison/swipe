@@ -1,8 +1,8 @@
 # Design notes and decisions
 
-The following will be my own engineering work before the assistance of AI tools.
+Following will be my own engineering work before the assistance of AI tools.
 
-I will be planning the creation of a Swipe-to-Vote Mobile Web App.
+I will be planning the creation of a Swipe-to-Vote Mobile Web App. This design file is created to satisfy the Core (must have) functionality. Stretch goals will be addressed later given enough time.
 
 ## High-level Functional Specifications
 
@@ -33,8 +33,24 @@ The results section, reachable by swiping down or clicking the button when shown
 - React.js frontend based on my own familiarity so that I can more quickly review AI outputs and make adjustments
 - Touch gestures must work for mobile and mouse drag on desktop for grading
 - No styling issues (layout shift, overflow, broken images on viewport)
+- Must work and look correct on 390 x 844 viewport (iPhone-class) at minimum
 
 ### Backend
 
 - Using FastAPI backend here, and again for familiarity and recency bias
-- 
+- FastAPI will be more than enough to supply basic API endpoints for the web client to call
+- Exposes a minimum of GET /items (list of items to vote on), POST /vote (record a vote {itemId, choice, sessionId}), GET /results (aggregate yes/no counts per item)
+- A single user voting twice on the same item should not double-count (avoid this by putting rather than posting, one vote per user-pet)
+- Want to run this environment in docker containers, so the database will be a SQLite db for minimum db overhead on the VM running our containers
+
+### Data
+
+- 100 pets
+- Seed these pets with a script file (note which API is used to gather images)
+- Each pet needs a stable id, display label, and an image URL/path
+
+### Quality Bar
+
+- Commit readable, organized code in logical chunks
+- README explains how to run the app, the architecture in 1-2 paragraphs, and the trade-offs made
+- Input validation on the backend (we will handle a lot of this with Pydantic/FastAPI)
