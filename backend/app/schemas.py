@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 VoteChoice = Literal["yes", "no"]
+SortOption = Literal["most_loved", "most_skipped", "most_divisive"]
 
 USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
@@ -71,3 +72,13 @@ class VoteResponse(BaseModel):
     pet_id: int
     choice: VoteChoice
     updated_at: datetime
+
+
+class ResultRow(BaseModel):
+    id: int
+    label: str
+    image_url: str
+    yes_count: int
+    no_count: int
+    total_votes: int
+    yes_percent: float
