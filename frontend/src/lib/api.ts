@@ -84,3 +84,18 @@ export type TokenResponse = {
   access_token: string;
   token_type: string;
 };
+
+export type VoteChoice = "yes" | "no";
+
+export type Pet = {
+  id: number;
+  label: string;
+  image_url: string;
+  your_vote: VoteChoice | null;
+};
+
+export type VoteResponse = {
+  pet_id: number;
+  choice: VoteChoice;
+  updated_at: string;
+};

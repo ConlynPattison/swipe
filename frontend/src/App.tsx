@@ -4,6 +4,7 @@ import { AuthProvider } from "./auth/AuthContext";
 import { LoginPage } from "./auth/LoginPage";
 import { RequireAuth } from "./auth/RequireAuth";
 import { SignupPage } from "./auth/SignupPage";
+import { AggregationPage } from "./pages/AggregationPage";
 import { DeckPage } from "./pages/DeckPage";
 
 export default function App() {
@@ -18,6 +19,14 @@ export default function App() {
             element={
               <RequireAuth>
                 <DeckPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/results"
+            element={
+              <RequireAuth>
+                <AggregationPage />
               </RequireAuth>
             }
           />
