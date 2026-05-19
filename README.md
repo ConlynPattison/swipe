@@ -24,7 +24,13 @@ docker compose down -v
 
 ## Architecture (in brief)
 
-Two-tier: a React/TypeScript frontend (Vite-built, Framer Motion gestures, Tailwind utility CSS) talks to a FastAPI backend over `/api/*`. The backend persists users, pets, and votes in a single SQLite database keyed by `(user_id, pet_id)` so revoting is idempotent. Pet rows are pre-seeded from The Dog API and The Cat API on first run.
+Two-tier: a React/TypeScript frontend (Vite-built, Framer Motion gestures, Tailwind utility CSS) talks to a FastAPI backend over `/api/*`. The backend persists users, pets, and votes in a single SQLite database keyed by `(user_id, pet_id)` so revoting is idempotent. On first boot the backend auto-seeds ~100 pets (50 dogs from [dog.ceo](https://dog.ceo) + 50 cats from [The Cat API](https://thecatapi.com)); if either upstream is unreachable it falls back to a 3-pet mock set so the app stays usable. The seed is idempotent — restarts with a persistent volume don't re-fetch.
+
+To force a re-seed (e.g. after schema changes):
+
+```bash
+docker compose exec backend python -m app.seed_real --reset
+```
 
 For local development without Docker, see [Development](#development) below.
 
