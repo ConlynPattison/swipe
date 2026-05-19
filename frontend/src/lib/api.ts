@@ -71,6 +71,8 @@ export const api = {
     request<T>("POST", path, { body, token }),
   put: <T>(path: string, body: unknown, token?: string | null) =>
     request<T>("PUT", path, { body, token }),
+  del: <T = null>(path: string, token?: string | null) =>
+    request<T>("DELETE", path, { token }),
 };
 
 export type AuthUser = {

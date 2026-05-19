@@ -5,10 +5,12 @@ import { useAuth } from "../auth/useAuth";
 import { SwipeCard, type SwipeDirection } from "../deck/SwipeCard";
 import { api, ApiError, type Pet, type VoteChoice, type VoteResponse } from "../lib/api";
 
+type VoteRecord = { pet: Pet; choice: VoteChoice };
+
 type DeckState =
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  | { kind: "ready"; pets: Pet[]; index: number };
+  | { kind: "ready"; pets: Pet[]; index: number; history: VoteRecord[] };
 
 export function DeckPage() {
   const { user, token, logout } = useAuth();
@@ -24,7 +26,7 @@ export function DeckPage() {
       .then((allPets) => {
         if (cancelled) return;
         const unvoted = allPets.filter((p) => p.your_vote === null);
-        setState({ kind: "ready", pets: unvoted, index: 0 });
+        setState({ kind: "ready", pets: unvoted, index: 0, history: [] });
       })
       .catch((err) => {
         if (cancelled) return;
@@ -53,21 +55,41 @@ export function DeckPage() {
     (direction: SwipeDirection) => {
       if (state.kind !== "ready") return;
       const current = state.pets[state.index];
-      if (current === undefined) {
-        if (direction === "agg") goToResults();
-        return;
-      }
       if (direction === "agg") {
         goToResults();
         return;
       }
+      if (current === undefined) return;
       recordVote(current, direction);
-      setState({ kind: "ready", pets: state.pets, index: state.index + 1 });
+      setState({
+        kind: "ready",
+        pets: state.pets,
+        index: state.index + 1,
+        history: [...state.history, { pet: current, choice: direction }],
+      });
     },
     [state, goToResults, recordVote],
   );
 
+  const handleUndo = useCallback(() => {
+    if (state.kind !== "ready" || state.history.length === 0) return;
+    const last = state.history[state.history.length - 1];
+    // Optimistic: pop history and rewind the deck immediately. If the DELETE
+    // fails, the next /pets fetch (e.g. on reload) will correct the local
+    // optimistic state.
+    setState({
+      kind: "ready",
+      pets: state.pets,
+      index: state.index - 1,
+      history: state.history.slice(0, -1),
+    });
+    api.del(`/votes/${last.pet.id}`, token).catch((err) => {
+      console.error(`Undo on pet ${last.pet.id} failed:`, err);
+    });
+  }, [state, token]);
+
   const atEnd = state.kind === "ready" && state.index >= state.pets.length;
+  const canUndo = state.kind === "ready" && state.history.length > 0;
 
   return (
     <main className="min-h-screen flex flex-col px-6 pt-12 pb-6">
@@ -88,7 +110,9 @@ export function DeckPage() {
       <DeckBody state={state} onCommit={handleCommit} onViewResults={goToResults} />
 
       <BottomNav
-        disabled={state.kind !== "ready" || atEnd}
+        voteDisabled={state.kind !== "ready" || atEnd}
+        canUndo={canUndo}
+        onUndo={handleUndo}
         onNo={() => handleCommit("no")}
         onYes={() => handleCommit("yes")}
         onAggregation={goToResults}
@@ -205,24 +229,35 @@ function EndOfDeckCard({
 }
 
 function BottomNav({
-  disabled,
+  voteDisabled,
+  canUndo,
+  onUndo,
   onNo,
   onYes,
   onAggregation,
 }: {
-  disabled: boolean;
+  voteDisabled: boolean;
+  canUndo: boolean;
+  onUndo: () => void;
   onNo: () => void;
   onYes: () => void;
   onAggregation: () => void;
 }) {
   return (
-    <nav className="flex items-center justify-center gap-6 pt-4 pb-2">
+    <nav className="flex items-center justify-center gap-4 pt-4 pb-2">
+      <NavButton
+        label="Undo last swipe"
+        symbol="↶"
+        tone="undo"
+        onClick={onUndo}
+        disabled={!canUndo}
+      />
       <NavButton
         label="Not interested"
         symbol="✕"
         tone="no"
         onClick={onNo}
-        disabled={disabled}
+        disabled={voteDisabled}
       />
       <NavButton
         label="Results"
@@ -236,7 +271,7 @@ function BottomNav({
         symbol="♥"
         tone="yes"
         onClick={onYes}
-        disabled={disabled}
+        disabled={voteDisabled}
       />
     </nav>
   );
@@ -251,7 +286,7 @@ function NavButton({
 }: {
   label: string;
   symbol: string;
-  tone: "no" | "agg" | "yes";
+  tone: "no" | "agg" | "yes" | "undo";
   onClick: () => void;
   disabled: boolean;
 }) {
@@ -260,7 +295,9 @@ function NavButton({
       ? "border-yes/60 text-yes"
       : tone === "no"
         ? "border-no/60 text-no"
-        : "border-sky-500/60 text-sky-400";
+        : tone === "agg"
+          ? "border-sky-500/60 text-sky-400"
+          : "border-slate-600/60 text-slate-400";
   return (
     <button
       type="button"
