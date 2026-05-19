@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -31,3 +31,21 @@ def upsert_vote(
     db.commit()
     db.refresh(vote)
     return VoteResponse(pet_id=vote.pet_id, choice=vote.choice, updated_at=vote.updated_at)
+
+
+@router.delete("/{pet_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_vote(
+    pet_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Response:
+    vote = db.scalar(
+        select(Vote).where(Vote.user_id == current_user.id, Vote.pet_id == pet_id)
+    )
+    if vote is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="No vote to delete"
+        )
+    db.delete(vote)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
