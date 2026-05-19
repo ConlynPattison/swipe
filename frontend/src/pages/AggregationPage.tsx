@@ -5,8 +5,12 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/useAuth";
 import { api, ApiError, type ResultRow, type SortOption } from "../lib/api";
 
-const COMMIT_OFFSET = 110;
-const COMMIT_VELOCITY = 600;
+// Handle drag commits with a smaller offset than the deck swipe because the
+// handle's visible drag range is only ~50px; velocity threshold matches the
+// deck so a deliberate flick still feels consistent.
+const HANDLE_COMMIT_OFFSET = 40;
+const HANDLE_COMMIT_VELOCITY = 600;
+const HANDLE_DRAG_LIMIT = 50;
 const EXIT_Y = 900;
 const DEBOUNCE_MS = 250;
 
@@ -18,19 +22,11 @@ type FetchState =
 export function AggregationPage() {
   const { token } = useAuth();
   const navigate = useNavigate();
-  const controls = useAnimation();
+  const pageControls = useAnimation();
   const [sort, setSort] = useState<SortOption>("most_loved");
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [state, setState] = useState<FetchState>({ kind: "loading" });
-  const [atTop, setAtTop] = useState(true);
-
-  useEffect(() => {
-    const update = () => setAtTop(window.scrollY <= 0);
-    update();
-    window.addEventListener("scroll", update, { passive: true });
-    return () => window.removeEventListener("scroll", update);
-  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query.trim()), DEBOUNCE_MS);
@@ -59,29 +55,21 @@ export function AggregationPage() {
     };
   }, [token, sort, debouncedQuery]);
 
-  async function handleDragEnd(_: PointerEvent, info: PanInfo) {
-    const { offset, velocity } = info;
-    if (offset.y < -COMMIT_OFFSET || velocity.y < -COMMIT_VELOCITY) {
-      await controls.start({ y: -EXIT_Y, opacity: 0, transition: { duration: 0.2 } });
-      navigate("/");
-      return;
-    }
-    await controls.start({
-      y: 0,
-      transition: { type: "spring", stiffness: 400, damping: 30 },
+  async function commitDismiss() {
+    await pageControls.start({
+      y: -EXIT_Y,
+      opacity: 0,
+      transition: { duration: 0.2 },
     });
+    navigate("/");
   }
 
   return (
     <motion.main
-      className="min-h-screen flex flex-col px-5 pt-10 pb-8"
-      drag={atTop ? "y" : false}
-      dragConstraints={{ top: -200, bottom: 0 }}
-      dragElastic={0.6}
-      dragMomentum={false}
-      animate={controls}
-      onDragEnd={handleDragEnd}
+      className="min-h-screen flex flex-col px-5 pt-3 pb-8"
+      animate={pageControls}
     >
+      <DragHandle onCommit={commitDismiss} />
       <header className="mb-4">
         <Link to="/" className="text-sm text-slate-300 underline underline-offset-4">
           ← Back to swiping
@@ -92,11 +80,46 @@ export function AggregationPage() {
       <Controls sort={sort} setSort={setSort} query={query} setQuery={setQuery} />
 
       <Body state={state} />
-
-      <p className="text-slate-600 text-xs text-center pt-6">
-        ↑ Swipe up to return to the deck
-      </p>
     </motion.main>
+  );
+}
+
+function DragHandle({ onCommit }: { onCommit: () => void }) {
+  const controls = useAnimation();
+
+  async function onDragEnd(_: PointerEvent, info: PanInfo) {
+    if (
+      info.offset.y < -HANDLE_COMMIT_OFFSET ||
+      info.velocity.y < -HANDLE_COMMIT_VELOCITY
+    ) {
+      onCommit();
+      // No reset: the parent is animating away.
+      return;
+    }
+    await controls.start({
+      y: 0,
+      transition: { type: "spring", stiffness: 400, damping: 30 },
+    });
+  }
+
+  return (
+    <div className="flex flex-col items-center pt-2 pb-3 select-none">
+      <motion.div
+        className="w-12 h-1.5 bg-slate-700 rounded-full cursor-grab active:cursor-grabbing"
+        drag="y"
+        dragConstraints={{ top: -HANDLE_DRAG_LIMIT, bottom: 0 }}
+        dragElastic={0.6}
+        dragMomentum={false}
+        animate={controls}
+        onDragEnd={onDragEnd}
+        whileDrag={{ scale: 1.3, backgroundColor: "#94a3b8" }}
+        aria-label="Drag up to return to the deck"
+        role="button"
+      />
+      <p className="text-slate-600 text-[10px] mt-1.5 tracking-wide">
+        drag ↑ to return
+      </p>
+    </div>
   );
 }
 
