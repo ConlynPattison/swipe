@@ -1,8 +1,10 @@
 """
-Seed the Pet table from public dog and cat image APIs.
+Seed the Pet table from public dog/cat APIs, then populate ten test users
+who have each voted on a random 50-100 pets so the aggregation page has
+meaningful data on first boot.
 
-Sources
--------
+Pet sources
+-----------
 - Dogs:  https://dog.ceo  -- 50 random dog images. Breed is embedded in the
   image URL (e.g. .../breeds/retriever-golden/...) so we can derive a label
   without an API key.
@@ -16,10 +18,18 @@ API for dog.ceo when we discovered The Dog API drops breed data without a
 key, which would have given us all-generic labels. See INDEPENDENT_DESIGN.md
 AI Usage Notes for the longer story.
 
+Test users
+----------
+After the pets are in place, seed_test_users_and_votes creates testuser1
+through testuser10 (all with password `TestPass1`) and has each cast a
+random 50-100 votes. Per-pet "appeal" is a hidden uniform(0.2, 0.85) score
+so the aggregation page shows real popularity variance rather than every
+pet hovering near 50%.
+
 Usage
 -----
-    python -m app.seed_real           # idempotent; skips if pets table is non-empty
-    python -m app.seed_real --reset   # clears pets + votes first, then re-seeds
+    python -m app.seed_real           # idempotent; skips parts already done
+    python -m app.seed_real --reset   # clears pets, votes, and test users first
 
 If both upstream APIs fail (e.g. no network), falls back to the 3-pet mock
 seed so the app is still usable.
@@ -29,6 +39,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import random
 import re
 import sys
 from dataclasses import dataclass
@@ -37,7 +48,8 @@ import httpx
 from sqlalchemy import delete, func, select
 
 from app.db import Base, SessionLocal, engine
-from app.models import Pet, Vote
+from app.models import Pet, User, Vote
+from app.security import hash_password
 from app.seed import seed_mock_pets
 
 logger = logging.getLogger("seed_real")
@@ -47,6 +59,14 @@ DOG_BREEDS_URL = "https://dog.ceo/api/breeds/list/all"
 CAT_URL = "https://api.thecatapi.com/v1/images/search?limit=10"
 CAT_BATCHES = 5  # The Cat API ignores `limit` on the free tier, so loop.
 HTTP_TIMEOUT = 10.0
+
+TEST_USER_COUNT = 10
+TEST_USERNAME_PREFIX = "testuser"
+TEST_USER_PASSWORD = "TestPass1"  # meets the locked rules: 8+ chars, upper, lower, digit
+VOTES_PER_USER_MIN = 50
+VOTES_PER_USER_MAX = 100
+APPEAL_MIN = 0.2
+APPEAL_MAX = 0.85
 
 DOG_SOURCE = "dog_ceo"
 CAT_SOURCE = "cat_api"
@@ -163,11 +183,15 @@ def _pets_count() -> int:
 
 
 def _reset_db() -> None:
+    """Wipe all votes, pets, and test users so a fresh seed run is clean.
+    Real users (those that don't match the testuser prefix) are preserved
+    but lose their votes -- they'd need to re-vote after a reset."""
     with SessionLocal() as db:
         # Votes first: SQLite doesn't enforce ON DELETE CASCADE without
         # PRAGMA foreign_keys=ON, so do it explicitly.
         db.execute(delete(Vote))
         db.execute(delete(Pet))
+        db.execute(delete(User).where(User.username.like(f"{TEST_USERNAME_PREFIX}%")))
         db.commit()
 
 
@@ -198,25 +222,84 @@ def seed_real_pets() -> int:
     return len(rows)
 
 
+def seed_test_users_and_votes() -> tuple[int, int]:
+    """Idempotent: creates testuser1..testuserN (skipping any that already exist)
+    and gives each between VOTES_PER_USER_MIN and VOTES_PER_USER_MAX random votes
+    on the pets currently in the DB. Each pet gets a hidden uniform appeal score
+    in [APPEAL_MIN, APPEAL_MAX] so the aggregation page has realistic variance
+    (some pets clearly loved, some clearly skipped). Returns
+    (users_created, votes_created)."""
+    with SessionLocal() as db:
+        pet_ids = list(db.scalars(select(Pet.id)))
+        if not pet_ids:
+            logger.info("No pets in DB; skipping test users.")
+            return (0, 0)
+
+        appeal = {pid: random.uniform(APPEAL_MIN, APPEAL_MAX) for pid in pet_ids}
+        users_created = 0
+        votes_created = 0
+
+        for i in range(1, TEST_USER_COUNT + 1):
+            username = f"{TEST_USERNAME_PREFIX}{i}"
+            if db.scalar(select(User).where(User.username == username)) is not None:
+                continue
+            user = User(
+                username=username,
+                email=f"{username}@example.com",
+                password_hash=hash_password(TEST_USER_PASSWORD),
+            )
+            db.add(user)
+            db.flush()  # populate user.id without committing
+
+            target = random.randint(VOTES_PER_USER_MIN, VOTES_PER_USER_MAX)
+            sample = random.sample(pet_ids, min(target, len(pet_ids)))
+            for pet_id in sample:
+                choice = "yes" if random.random() < appeal[pet_id] else "no"
+                db.add(Vote(user_id=user.id, pet_id=pet_id, choice=choice))
+                votes_created += 1
+            users_created += 1
+
+        db.commit()
+
+    if users_created:
+        logger.info(
+            "Created %d test users (password %r) with %d votes.",
+            users_created,
+            TEST_USER_PASSWORD,
+            votes_created,
+        )
+    else:
+        logger.info("All %d test users already exist; nothing to do.", TEST_USER_COUNT)
+    return (users_created, votes_created)
+
+
+def seed_all() -> None:
+    """Top-level idempotent seed: pets first, then test users + random votes."""
+    seed_real_pets()
+    seed_test_users_and_votes()
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     parser = argparse.ArgumentParser(
-        description="Seed the Pet table from dog.ceo and The Cat API."
+        description=(
+            "Seed pets (dog.ceo + The Cat API) and 10 test users with random votes."
+        )
     )
     parser.add_argument(
         "--reset",
         action="store_true",
-        help="Delete existing pets and votes before seeding.",
+        help="Delete pets, votes, and test users before seeding.",
     )
     args = parser.parse_args()
 
     Base.metadata.create_all(bind=engine)
 
     if args.reset:
-        logger.info("Reset requested -- clearing pets and votes.")
+        logger.info("Reset requested -- clearing pets, votes, and test users.")
         _reset_db()
 
-    seed_real_pets()
+    seed_all()
     return 0
 
 

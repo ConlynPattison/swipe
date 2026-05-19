@@ -29,7 +29,7 @@ def get_db() -> Generator[Session, None, None]:
 
 def init_db() -> None:
     from app import models  # noqa: F401  register mappers
-    from app.seed_real import seed_real_pets
+    from app.seed_real import seed_all
 
     Base.metadata.create_all(bind=engine)
-    seed_real_pets()
+    seed_all()
